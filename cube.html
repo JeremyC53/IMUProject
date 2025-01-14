@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>IMU Data Cube Visualization</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: monospace;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">Waiting for IMU data...</div>
+    <script>
+        // Set up Three.js scene
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Create cube
+        const geometry = new THREE.BoxGeometry(2, 0.4, 2);
+        const materials = [
+            new THREE.MeshBasicMaterial({ color: 0xff00ff }), // right - purple
+            new THREE.MeshBasicMaterial({ color: 0x0000ff }), // left - blue
+            new THREE.MeshBasicMaterial({ color: 0x00ff00 }), // top - green
+            new THREE.MeshBasicMaterial({ color: 0xff8800 }), // bottom - orange
+            new THREE.MeshBasicMaterial({ color: 0xff0000 }), // front - red
+            new THREE.MeshBasicMaterial({ color: 0xffff00 })  // back - yellow
+        ];
+        const cube = new THREE.Mesh(geometry, materials);
+        scene.add(cube);
+
+        camera.position.z = 7;
+
+        // WebSocket connection
+        let ws;
+        const infoDiv = document.getElementById('info');
+
+        function connectWebSocket() {
+            ws = new WebSocket('ws://localhost:8765');
+
+            ws.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log("Received data:", data);  // Debug log
+                    
+                    // Reset cube rotation
+                    cube.rotation.set(0, 0, 0);
+                    
+                    // Apply rotations in the same order as the PyGame version
+                    cube.rotateY(data.az * Math.PI / 180);  // Yaw
+                    cube.rotateX(data.ay * Math.PI / 180);  // Pitch
+                    cube.rotateZ(-data.ax * Math.PI / 180); // Roll
+                    
+                    // Update info display
+                    infoDiv.textContent = `Pitch: ${data.ay.toFixed(2)}, Roll: ${data.ax.toFixed(2)}, Yaw: ${data.az.toFixed(2)}`;
+                } catch (e) {
+                    console.error("Error processing message:", e);
+                }
+            };
+
+            ws.onopen = function() {
+                infoDiv.textContent = "Connected to IMU data stream";
+                console.log("WebSocket connected");  // Debug log
+            };
+
+            ws.onerror = function(error) {
+                console.error("WebSocket error:", error);  // Debug log
+                infoDiv.textContent = "WebSocket connection error";
+            };
+
+            ws.onclose = function() {
+                console.log("WebSocket closed - attempting to reconnect...");  // Debug log
+                infoDiv.textContent = "Connection lost - reconnecting...";
+                setTimeout(connectWebSocket, 1000);  // Attempt to reconnect after 1 second
+            };
+        }
+
+        connectWebSocket();
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Handle window resize
+        window.addEventListener('resize', onWindowResize, false);
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+    </script>
+</body>
+</html>
